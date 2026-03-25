@@ -11,7 +11,7 @@ Upstream `_scaled_grouped_mm` (FP8×FP8→BF16 grouped GEMM with rowwise float32
 **Repository**: `intel/torch-xpu-ops`
 **Branch**: `xpu-scaled-grouped-mm` (based on `xpu-grouped-mm`)
 **Commit**: `2d6ca38` — "Add scaled_grouped_mm kernel for XPU (FP8 x FP8 -> BF16)"
-**Push URL**: https://github.com/xuhancn/torch-xpu-ops/pull/new/xpu-scaled-grouped-mm
+**PR**: https://github.com/intel/torch-xpu-ops/pull/3172
 
 ### Files
 
@@ -60,7 +60,7 @@ Files:
 - `073a25b` — "Add XPU dispatch for _scaled_grouped_mm"
 - `b27627f` — "Update AOTInductor C shim for _scaled_grouped_mm XPU dispatch"
 
-**Push URL**: https://github.com/xuhancn/pytorch/pull/new/xpu-scaled-grouped-mm
+**PR**: https://github.com/pytorch/pytorch/pull/178354
 
 ### Files
 
@@ -148,4 +148,4 @@ cd /tmp && python /path/to/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py 
 | Kernel | Dev repo | torch-xpu-ops PR | PyTorch PR |
 |--------|----------|-------------------|------------|
 | `_grouped_mm` | `dev_pytorch_group_mm` | [#3122](https://github.com/intel/torch-xpu-ops/pull/3122) | [#178242](https://github.com/pytorch/pytorch/pull/178242) |
-| `_scaled_grouped_mm` | `dev_pytorch_scaled_grouped_mm` | TBD | TBD |
+| `_scaled_grouped_mm` | `dev_pytorch_scaled_grouped_mm` | [#3172](https://github.com/intel/torch-xpu-ops/pull/3172) | [#178354](https://github.com/pytorch/pytorch/pull/178354) |
