@@ -111,18 +111,46 @@ Regenerated via: `python torchgen/gen.py --update-aoti-c-shim`
 
 ## Validation
 
-### After PR 1 (torch-xpu-ops)
+### Local SYCL kernel tests (2026-03-31)
 
-```bash
-# Build PyTorch with USE_SYCLTLA=ON and updated torch-xpu-ops
-cd /tmp && python /path/to/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py -v
+**Environment**: conda `xu_pytorch`, Intel Arc B580 (BMG), oneAPI 2025.3.2
+**Result**: **10/10 PASSED**
+
+```
+test_2d_2d ... ok
+test_2d_3d ... ok
+test_3d_2d ... ok
+test_3d_3d ... ok
+test_larger_shapes ... ok
+test_min_k_size ... ok
+test_single_group_3d_3d ... ok
+test_bias_not_supported ... ok
+test_missing_offs_for_2d ... ok
+test_wrong_a_dtype ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 0.754s
+
+OK
 ```
 
-### After PR 2 (PyTorch)
+### Upstream torch-xpu-ops tests (2026-03-31)
 
-```bash
-# Full PyTorch build with updated xpu.txt
-cd /tmp && python /path/to/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py -v
+**Environment**: conda `xu_pytorch`, Intel Arc B580 (BMG), oneAPI 2025.3.2
+**Test file**: `torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py`
+**Result**: **5/5 PASSED**
+
+```
+test_scaled_grouped_gemm_2d_2d_xpu_bfloat16 ... ok
+test_scaled_grouped_gemm_2d_3d_xpu_bfloat16 ... ok
+test_scaled_grouped_gemm_3d_2d_xpu_bfloat16 ... ok
+test_scaled_grouped_gemm_3d_3d_xpu_bfloat16 ... ok
+test_scaled_grouped_gemm_accuracy_large_xpu_bfloat16 ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.515s
+
+OK
 ```
 
 ## Scope
