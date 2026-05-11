@@ -10,7 +10,7 @@ Upstream `_scaled_grouped_mm` (FP8×FP8→BF16 grouped GEMM with rowwise float32
 
 **Repository**: `intel/torch-xpu-ops`
 **Branch**: `xpu-scaled-grouped-mm` (based on `xpu-grouped-mm`)
-**Commit**: `2d6ca38` — "Add scaled_grouped_mm kernel for XPU (FP8 x FP8 -> BF16)"
+**Commit**: `9560d838` — "Add scaled_grouped_mm kernel for XPU (FP8 x FP8 -> BF16)" (rebased 2026-05-11)
 **PR**: https://github.com/intel/torch-xpu-ops/pull/3172
 
 ### Files
@@ -29,7 +29,7 @@ The existing glob `file(GLOB xpu_sycltla ... "native/xpu/sycltla/*.cpp")` and `i
 
 ### Commit Summary
 
-**`2d6ca38` — Add scaled_grouped_mm kernel for XPU (FP8 x FP8 -> BF16)**
+**`9560d838` — Add scaled_grouped_mm kernel for XPU (FP8 x FP8 -> BF16)**
 
 Add `_scaled_grouped_mm` support for Intel XPU using sycl-tla. The kernel
 dequantizes FP8 inputs to BF16 with rowwise float32 scale application,
@@ -56,9 +56,10 @@ Files:
 
 **Repository**: `pytorch/pytorch`
 **Branch**: `xpu-scaled-grouped-mm` (based on `xpu-grouped-mm`)
-**Commits**:
-- `073a25b` — "Add XPU dispatch for _scaled_grouped_mm"
-- `b27627f` — "Update AOTInductor C shim for _scaled_grouped_mm XPU dispatch"
+**Commits** (rebased 2026-05-11):
+- `4a78fa6` — "Add XPU dispatch for _scaled_grouped_mm"
+- `2a38001` — "Update AOTInductor C shim for _scaled_grouped_mm XPU dispatch"
+- `478e91c` — "Move GroupedBlas dispatch files from native/mkldnn/xpu/ to native/xpu/"
 
 **PR**: https://github.com/pytorch/pytorch/pull/178354
 
@@ -67,9 +68,10 @@ Files:
 | File | Action | Description |
 |------|--------|-------------|
 | `aten/src/ATen/native/native_functions.yaml` | EDIT | Add `XPU: _scaled_grouped_mm_xpu` dispatch key |
-| `aten/src/ATen/native/mkldnn/xpu/ScaledGroupedBlas.cpp` | NEW | XPU dispatch function with full validation (158 lines) |
-| `torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h` | EDIT | Auto-generated AOTInductor C shim entry |
-| `third_party/xpu.txt` | EDIT | Update to torch-xpu-ops commit `2d6ca382598655ccb32775947eae816973326c4c` |
+| `aten/src/ATen/native/xpu/ScaledGroupedBlas.cpp` | NEW | XPU dispatch function with full validation (158 lines) |
+| `torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h` | EDIT | Auto-generated AOTInductor C shim entry (with TORCH_FEATURE_VERSION guard) |
+| `third_party/xpu.txt` | EDIT | Update to torch-xpu-ops commit `27d0c4291186037ca12638b364bfb8d8e0218892` |
+| `aten/src/ATen/CMakeLists.txt` | EDIT | Add `native/xpu/*.cpp` and `native/xpu/*.h` glob patterns |
 
 ### Build Note
 
@@ -83,7 +85,7 @@ This adds the `aoti_torch_xpu__scaled_grouped_mm` entry to `c_shim_xpu.h`. Witho
 
 ### Commit Summary
 
-**`073a25b` — Add XPU dispatch for _scaled_grouped_mm**
+**`4a78fa6` — Add XPU dispatch for _scaled_grouped_mm**
 
 Register XPU dispatch key for `_scaled_grouped_mm` in `native_functions.yaml`
 and add the dispatch function in `ScaledGroupedBlas.cpp`. The kernel
@@ -94,19 +96,32 @@ via the USE_SYCLTLA-guarded wrapper in torch-xpu-ops.
 Update `third_party/xpu.txt` to include the scaled_grouped_mm kernel commit.
 
 ```
- aten/src/ATen/native/mkldnn/xpu/ScaledGroupedBlas.cpp | 158 +++++++++++++++++
- aten/src/ATen/native/native_functions.yaml            |   1 +
- third_party/xpu.txt                                   |   2 +-
+ aten/src/ATen/native/xpu/ScaledGroupedBlas.cpp         | 158 +++++++++++++++++
+ aten/src/ATen/native/native_functions.yaml              |   1 +
+ third_party/xpu.txt                                     |   2 +-
  3 files changed, 160 insertions(+), 1 deletion(-)
 ```
 
-**`b27627f` — Update AOTInductor C shim for _scaled_grouped_mm XPU dispatch**
+**`2a38001` — Update AOTInductor C shim for _scaled_grouped_mm XPU dispatch**
 
 Regenerated via: `python torchgen/gen.py --update-aoti-c-shim`
 
 ```
- torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h | 1 +
- 1 file changed, 1 insertion(+)
+ torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h | 3 +++
+ 1 file changed, 3 insertions(+)
+```
+
+**`478e91c` — Move GroupedBlas dispatch files from native/mkldnn/xpu/ to native/xpu/**
+
+GroupedBlas and ScaledGroupedBlas use sycl-tla (not OneDNN/mkldnn),
+so they belong in native/xpu/ rather than native/mkldnn/xpu/.
+Added native/xpu/ glob patterns to CMakeLists.txt for the new location.
+
+```
+ aten/src/ATen/CMakeLists.txt                                | 4 ++++
+ aten/src/ATen/native/{mkldnn => }/xpu/GroupedBlas.cpp       | 0
+ aten/src/ATen/native/{mkldnn => }/xpu/ScaledGroupedBlas.cpp | 0
+ 3 files changed, 4 insertions(+)
 ```
 
 ## Validation
