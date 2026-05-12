@@ -204,6 +204,7 @@ if __name__ == "__main__":
   ```
 - **Stale installed headers**: After updating torch-xpu-ops, headers in `pytorch/torch/include/ATen/native/xpu/sycl/` may be stale from a previous build. If you see template signature mismatches, copy the updated header from `third_party/torch-xpu-ops/src/` to `torch/include/`.
 - **Commit order matters**: Always commit torch-xpu-ops first, get the commit hash, update `pytorch/third_party/xpu.txt`, then commit PyTorch. The build system fetches torch-xpu-ops by this hash.
+- **Fork URL required before torch-xpu-ops PR merges**: The PyTorch build fetches torch-xpu-ops from the URL in `caffe2/CMakeLists.txt` (`TORCH_XPU_OPS_REPO_URL`). When `third_party/xpu.txt` points to a commit that only exists on the fork (`xuhancn/torch-xpu-ops`), you **must** change this URL to `https://github.com/xuhancn/torch-xpu-ops.git` — otherwise the build fails with "reference is not a tree". Commit this change to the PyTorch PR branch for CI validation. Revert it back to `intel/torch-xpu-ops.git` after the torch-xpu-ops PR lands.
 - **sycl-tla SPIR-V flags for local builds**: When building a standalone extension with `setup.py`, monkey-patch the SYCL link flags:
   ```python
   import torch.utils.cpp_extension as _cpp_ext
