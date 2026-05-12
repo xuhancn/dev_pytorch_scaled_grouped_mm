@@ -1,6 +1,38 @@
 # Local Kernel Test Report: `scaled_grouped_mm`
 
-**Date**: 2026-03-25
+**Date**: 2026-05-12 (rebase validation)
+**Device**: Intel Arc Pro B60 Graphics (BMG)
+**Environment**: Intel oneAPI DPC++/C++ 2025.3.2, PyTorch 2.13.0a0+git9027733 (XPU), conda env `xu_pytorch`
+
+## Latest Validation (2026-05-12)
+
+After rebasing both PR branches onto latest PyTorch main:
+- torch-xpu-ops PR #3172: rebased onto `upstream/main` (42e64e29)
+- PyTorch PR #178354: rebased onto `upstream/main`, 6 commits
+
+### Test Results
+
+| Test Suite | Result | Details |
+|-----------|--------|---------|
+| Local dev repo (`test_scaled_grouped_mm.py`) | **10/10 PASS** | Standalone SYCL extension, 0.753s |
+| torch-xpu-ops (`test_scaled_grouped_mm_xpu.py`) | **13/13 PASS** | PyTorch XPU dispatch path, 0.384s |
+| PyTorch upstream (`test_scaled_matmul_cuda.py -k _scaled_grouped_mm`) | 20 skipped | Expected — CUDA-only tests, no XPU instantiation |
+
+### XPU Hardware Validation
+
+```
+$ sycl-ls
+[level_zero:gpu][level_zero:0] Intel(R) Arc(TM) Pro B60 Graphics 20.1.0 [1.14.37435+12]
+[level_zero:gpu][level_zero:1] Intel(R) Graphics 12.70.4 [1.14.37435+12]
+
+$ python -c "import torch; print(torch.xpu.get_device_name(0))"
+Intel(R) Arc(TM) Pro B60 Graphics
+```
+
+---
+
+## Original Report (2026-03-25)
+
 **Device**: Intel Arc B580 (BMG)
 **Environment**: Intel oneAPI 2025.x, PyTorch with XPU support, conda env `xu_pytorch`
 
