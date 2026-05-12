@@ -220,6 +220,118 @@ if __name__ == "__main__":
 - **sycl-tla ElementC type**: Must match the accumulator type (e.g., `float`), not the output type (e.g., `bfloat16`). The `CollectiveEpilogue` uses `ElementAccumulator` for C pointers.
 - **Namespace conflicts**: If the kernel header defines a namespace (e.g., `namespace grouped_mm`), don't name your wrapper function the same thing. Rename to avoid ambiguity.
 
+## Building PyTorch from Source with XPU Support
+
+**Official doc**: https://github.com/pytorch/pytorch#intel-gpu-support
+
+### Prerequisites
+
+1. Intel oneAPI Base Toolkit (provides `icpx` compiler and SYCL runtime)
+2. The Intel compiler (`icpx`) **must** be on PATH when CMake configures — this is how CMake detects and enables XPU support.
+
+### Build Steps
+
+```bash
+# 1. Source Intel oneAPI (CRITICAL — must be done BEFORE cmake configure)
+source ~/intel/oneapi/setvars.sh
+
+# 2. Activate conda environment
+source ~/miniforge3/etc/profile.d/conda.sh && conda activate xu_pytorch
+
+# 3. Set environment variables
+export USE_XPU=1
+export TORCH_XPU_ARCH_LIST=bmg    # Target architecture (bmg = Battlemage/Arc B-series)
+export CMAKE_PREFIX_PATH="${CONDA_PREFIX}:${CMAKE_PREFIX_PATH}"
+
+# 4. Build and install (editable mode)
+cd /home/xu/conda_root/xu_pytorch/pytorch
+python -m pip install --no-build-isolation -v -e .
+```
+
+### Common Build Issues
+
+- **`USE_XPU=OFF` despite setting env var**: If CMakeCache.txt already exists with `USE_XPU:BOOL=OFF`, delete it and reconfigure. The env var only takes effect during initial cmake configuration.
+  ```bash
+  rm build/CMakeCache.txt
+  ```
+- **Stale shared libraries in site-packages**: After a successful build, editable install may load stale `.so` files from `site-packages/torch/lib/` instead of the freshly built ones in `pytorch/torch/lib/`. Fix by syncing:
+  ```bash
+  cp -a pytorch/torch/lib/*.so $(python -c "import site; print(site.getsitepackages()[0])")/torch/lib/
+  ```
+- **sycl-tla `-Werror` failures**: The `torch-xpu-ops/cmake/BuildFlags.cmake` adds `-Werror` to SYCL host flags. With newer GCC (14+) and C++20, sycl-tla headers trigger warnings (`-Wtemplate-id-cdtor`, `-Wreorder`, `-Wunused-variable`, `-Wunused-but-set-variable`). Workaround: comment out `-Werror` in `BuildFlags.cmake` line 57:
+  ```cmake
+  # list(APPEND SYCL_HOST_FLAGS -Werror)
+  ```
+- **`exmy_base.h` C++20 error**: GCC 14+ in C++20 mode rejects template-id on constructors. Patch `build/_deps/repo-sycl-tla-src/include/cutlass/exmy_base.h`:
+  ```cpp
+  // Change: explicit float_exmy_base<T, Derived>(float x)
+  // To:     explicit float_exmy_base(float x)
+  ```
+- **Verify XPU was compiled**: After build, check `torch._C._has_xpu` (not `torch.xpu.is_available()` which also requires hardware). If `_has_xpu` is False but cmake shows `USE_XPU=1`, the issue is likely stale site-packages libraries (see above).
+
+### Verifying the Build
+
+```bash
+cd /tmp  # avoid import conflicts
+python -c "
+import torch
+print('_has_xpu:', torch._C._has_xpu)           # True = compiled with XPU
+print('XPU available:', torch.xpu.is_available()) # True = hardware detected
+print('Device:', torch.xpu.get_device_name(0) if torch.xpu.is_available() else 'N/A')
+"
+```
+
+## Validating Intel XPU Hardware
+
+### Quick Validation (without source build)
+
+Create a fresh conda env and install the nightly XPU wheel — **no Intel oneAPI sourcing needed**:
+
+```bash
+# Create clean environment
+conda create -y -n xpu_test python=3.11
+conda activate xpu_test
+
+# Install nightly XPU wheel (includes bundled SYCL runtime)
+python -m pip install --pre torch pytorch-triton-xpu torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/nightly/xpu \
+  --upgrade --force-reinstall
+
+# Validate
+cd /tmp && python -c "
+import torch
+print('XPU available:', torch.xpu.is_available())
+print('Device count:', torch.xpu.device_count())
+if torch.xpu.is_available():
+    print('Device:', torch.xpu.get_device_name(0))
+"
+```
+
+### Checking SYCL Devices (with oneAPI)
+
+```bash
+source ~/intel/oneapi/setvars.sh
+sycl-ls   # Lists all SYCL-visible devices
+```
+
+### Hardware Requirements
+
+- Intel discrete GPUs: Arc A-series (Alchemist), Arc B-series (Battlemage), Arc Pro series
+- Supported platforms: Linux and Windows
+- Driver: Intel GPU driver with Level Zero support
+- Device nodes: `/dev/dri/renderD128` (or similar) must be accessible
+
+### Official Documentation
+
+| Resource | URL |
+|----------|-----|
+| PyTorch XPU build instructions | https://github.com/pytorch/pytorch#intel-gpu-support |
+| PyTorch XPU prerequisites | https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu.html |
+| PyTorch XPU nightly wheels | https://download.pytorch.org/whl/nightly/xpu |
+| Intel oneAPI Base Toolkit | https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html |
+| torch-xpu-ops repository | https://github.com/intel/torch-xpu-ops |
+| sycl-tla (CUTLASS for Intel) | https://github.com/intel/sycl-tla |
+
 ## Reference: Completed Ports
 
 | Kernel | Dev repo | torch-xpu-ops PR | PyTorch PR |
