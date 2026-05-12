@@ -321,12 +321,34 @@ sycl-ls   # Lists all SYCL-visible devices
 - Driver: Intel GPU driver with Level Zero support
 - Device nodes: `/dev/dri/renderD128` (or similar) must be accessible
 
+### Intel Compiler Versions (from PyTorch CI)
+
+The official CI install script is at:
+https://github.com/pytorch/pytorch/blob/main/.ci/docker/common/install_xpu.sh
+
+It installs "Intel Deep Learning Essentials" which bundles the compiler and libraries:
+
+| `XPU_VERSION` | Package URL | Compiler Version |
+|---------------|-------------|-----------------|
+| `2025.3` | `intel-deep-learning-essentials-2025.3.2.36_offline.sh` | Intel DPC++/C++ 2025.3.x |
+| `2025.2` (default) | `intel-deep-learning-essentials-2025.2.1.24_offline.sh` | Intel DPC++/C++ 2025.2.x |
+
+To check your local compiler version:
+```bash
+source ~/intel/oneapi/setvars.sh
+icpx --version
+# Intel(R) oneAPI DPC++/C++ Compiler 2025.3.2 (2025.3.2.20260112)
+```
+
+The CI script also installs GPU drivers (Level Zero, OpenCL, media) and development headers. On a local dev machine, install the full Intel oneAPI Base Toolkit instead.
+
 ### Official Documentation
 
 | Resource | URL |
 |----------|-----|
 | PyTorch XPU build instructions | https://github.com/pytorch/pytorch#intel-gpu-support |
 | PyTorch XPU prerequisites | https://www.intel.com/content/www/us/en/developer/articles/tool/pytorch-prerequisites-for-intel-gpu.html |
+| PyTorch CI XPU install script | https://github.com/pytorch/pytorch/blob/main/.ci/docker/common/install_xpu.sh |
 | PyTorch XPU nightly wheels | https://download.pytorch.org/whl/nightly/xpu |
 | Intel oneAPI Base Toolkit | https://www.intel.com/content/www/us/en/developer/tools/oneapi/base-toolkit.html |
 | torch-xpu-ops repository | https://github.com/intel/torch-xpu-ops |
