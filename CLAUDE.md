@@ -205,6 +205,7 @@ if __name__ == "__main__":
 - **Stale installed headers**: After updating torch-xpu-ops, headers in `pytorch/torch/include/ATen/native/xpu/sycl/` may be stale from a previous build. If you see template signature mismatches, copy the updated header from `third_party/torch-xpu-ops/src/` to `torch/include/`.
 - **Commit order matters**: Always commit torch-xpu-ops first, get the commit hash, update `pytorch/third_party/xpu.txt`, then commit PyTorch. The build system fetches torch-xpu-ops by this hash.
 - **Fork URL required before torch-xpu-ops PR merges**: The PyTorch build fetches torch-xpu-ops from the URL in `caffe2/CMakeLists.txt` (`TORCH_XPU_OPS_REPO_URL`). When `third_party/xpu.txt` points to a commit that only exists on the fork (`xuhancn/torch-xpu-ops`), you **must** change this URL to `https://github.com/xuhancn/torch-xpu-ops.git` — otherwise the build fails with "reference is not a tree". Commit this change to the PyTorch PR branch for CI validation. Revert it back to `intel/torch-xpu-ops.git` after the torch-xpu-ops PR lands.
+- **AOTI C shim version guard**: When adding an XPU dispatch key for an operator in `native_functions.yaml`, the auto-generated `c_shim_xpu.h` entry gets a `TORCH_FEATURE_VERSION >= TORCH_VERSION_X_Y_Z` guard. The version comes from `torchgen/aoti/fallback_ops.py` and tracks *when the operator first entered the stable C ABI* — it matches the CUDA shim version, not when XPU support was added. The version is auto-generated; don't change it manually.
 - **sycl-tla SPIR-V flags for local builds**: When building a standalone extension with `setup.py`, monkey-patch the SYCL link flags:
   ```python
   import torch.utils.cpp_extension as _cpp_ext
@@ -219,6 +220,11 @@ if __name__ == "__main__":
 
 - **sycl-tla ElementC type**: Must match the accumulator type (e.g., `float`), not the output type (e.g., `bfloat16`). The `CollectiveEpilogue` uses `ElementAccumulator` for C pointers.
 - **Namespace conflicts**: If the kernel header defines a namespace (e.g., `namespace grouped_mm`), don't name your wrapper function the same thing. Rename to avoid ambiguity.
+- **`compat::wait()` is required after every sycl-tla kernel launch**: `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results. All 14 official sycl-tla examples use this pattern. This is a framework requirement, not a design choice.
+  - Source: [`device.hpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp) — `compat::wait()` definition
+  - Source: [`gemm_universal_adapter.h`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cutlass/gemm/device/gemm_universal_adapter.h) — async `run()` 
+  - Examples: [`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/09_bmg_grouped_gemm_f8)
+- **Use permalinks for sycl-tla references**: Always link to a specific commit hash (e.g., `/blob/688200285b.../`) rather than `/blob/main/`, since sycl-tla is actively developed and files move frequently.
 
 ## Two-PR Rebase Workflow
 
