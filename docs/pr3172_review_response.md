@@ -2,8 +2,8 @@
 
 **PR**: https://github.com/intel/torch-xpu-ops/pull/3172
 **Reviewer**: GitHub Copilot (`copilot-pull-request-reviewer`)
-**Total comments**: 43 (9 outdated, 34 current) across 5 review rounds
-**Date reviewed**: 2026-05-12 (rounds 1-4), 2026-05-13 (round 5)
+**Total comments**: 46 (9 outdated, 37 current) across 6 review rounds
+**Date reviewed**: 2026-05-12 (rounds 1-4), 2026-05-13 (rounds 5-6)
 
 ## Legend
 
@@ -562,3 +562,53 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 | ⚠️ Won't Fix (duplicate) | 2 | compat::wait() (#42-43) — sycl-tla limitation |
 | Suppressed | 4 | Zero-sized groups in ragged-B/K paths |
 | **Total** | **11** | 7 public + 4 suppressed |
+
+---
+
+## Round 6 — 2026-05-13 (commit 876c04ae)
+
+3 new comments from Copilot reviewer.
+
+### Comment 44 — stride_b `{N, K, 1}` in ScaledGroupedMM ❌ Reject (duplicate)
+
+**File**: `ScaledGroupedMM.cpp:371`
+> `stride_b_vec` uses `{N, K, 1}` which corresponds to (N, K) row-major, but B is treated as (K, N). Stride/shape mismatch will cause CUTLASS to interpret B incorrectly.
+
+**Status**: ❌ Reject — duplicate of Comment 28 (round 4)
+
+**Reply**:
+> Duplicate of [earlier comment](#comment-28--stride_b_vec-n-k-1-mismatch-scaledgroupedmm--reject). This is correct as-is. `LayoutB = cutlass::layout::RowMajor`, and B enters as transposed (physical N×K row-major). The `{N, K, 1}` tuple passed to `make_cute_packed_stride(StrideB{}, ...)` describes the physical storage extents, which is the correct convention for CUTLASS/sycl-tla. This matches the [sycl-tla grouped GEMM example](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/examples/sycl/04_bmg_grouped_gemm/04_bmg_grouped_gemm.cpp) and all 18 model-level tests with real Llama 4 shapes pass correctly.
+
+---
+
+### Comment 45 — stride_b `{N, K, 1}` in GroupedMM ❌ Reject (duplicate)
+
+**File**: `GroupedMM.cpp:308`
+> Same stride concern in GroupedMM.cpp — `stride_b_vec` uses `{N, K, 1}` but B is (K, N).
+
+**Status**: ❌ Reject — duplicate of Comment 33 (round 4)
+
+**Reply**:
+> Duplicate of [earlier comment](#comment-33--stride_b_vec-n-k-1-mismatch-groupedmm--reject). Same reasoning as Comment 44 — `{N, K, 1}` is correct for `LayoutB = RowMajor` with B stored as (N, K) row-major. All tests pass including model-level validation with Llama 4 Scout shapes (K=5120, N=8192).
+
+---
+
+### Comment 46 — bf16_atol comment "2 ULP" misleading ✅ Accept
+
+**File**: `test/xpu/test_scaled_grouped_mm_xpu.py:86`
+> The comment claims "2 ULP absolute" for `bf16_atol = 0.125`, but 2 ULP for BF16 varies with magnitude (e.g., around 1.0, 2 ULP ≈ 0.015625). Please adjust the comment or the tolerance.
+
+**Status**: ✅ Accept — the comment is imprecise. `0.125` is 2 ULP only in the [8, 16) magnitude range. Should describe it as an empirically chosen absolute tolerance.
+
+**Reply**:
+> Good catch. Updated the comment to describe it as an empirically chosen tolerance rather than claiming a specific ULP count.
+
+---
+
+## Round 6 Summary
+
+| Category | Count | Details |
+|----------|-------|---------|
+| ❌ Reject (duplicate) | 2 | stride_b `{N,K,1}` (#44-45) — same as #28/#33 |
+| ✅ Accept | 1 | Fix misleading "2 ULP" comment (#46) |
+| **Total** | **3** |
