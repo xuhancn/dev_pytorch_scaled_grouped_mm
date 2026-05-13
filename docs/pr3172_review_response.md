@@ -364,10 +364,10 @@
 **Reply**:
 > `compat::wait()` is **required** by the sycl-tla kernel launch model — this is not a design choice but a framework requirement:
 >
-> 1. `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately ([`gemm_universal_adapter.h`, SYCL branch](https://github.com/intel/sycl-tla/blob/main/include/cutlass/gemm/device/gemm_universal_adapter.h)).
-> 2. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results ([`include/cute/util/compat/device.hpp`](https://github.com/intel/sycl-tla/blob/main/include/cute/util/compat/device.hpp)).
-> 3. **All 14 official sycl-tla examples** use this exact pattern, including the grouped GEMM examples ([`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/main/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/main/examples/09_bmg_grouped_gemm_f8)).
-> 4. Example 00 explicitly documents: *"CUTLASS on SYCL uses the compatibility library compat for e.g. default in-order queue"* ([`00_bmg_gemm.cpp`](https://github.com/intel/sycl-tla/blob/main/examples/00_bmg_gemm/00_bmg_gemm.cpp)).
+> 1. `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately ([`gemm_universal_adapter.h`, SYCL branch](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cutlass/gemm/device/gemm_universal_adapter.h)).
+> 2. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results ([`include/cute/util/compat/device.hpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp)).
+> 3. **All 14 official sycl-tla examples** use this exact pattern, including the grouped GEMM examples ([`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/09_bmg_grouped_gemm_f8)).
+> 4. Example 00 explicitly documents: *"CUTLASS on SYCL uses the compatibility library compat for e.g. default in-order queue"* ([`00_bmg_gemm.cpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/examples/00_bmg_gemm/00_bmg_gemm.cpp)).
 >
 > Removing it would cause data races. A future optimization could pass a custom `sycl::queue*` via the `stream` parameter for deferred synchronization, but this requires upstream sycl-tla changes.
 
@@ -532,7 +532,7 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 **Status**: ⚠️ Won't Fix — duplicate of Comments 29/35. `compat::wait()` is required by the sycl-tla runtime.
 
 **Reply**:
-> Duplicate of Comment 29. `compat::wait()` is **required** by the sycl-tla framework — `gemm_op.run()` is async and returns immediately. All 14 official sycl-tla examples use this pattern ([source](https://github.com/intel/sycl-tla/blob/main/include/cute/util/compat/device.hpp), [example 04](https://github.com/intel/sycl-tla/tree/main/examples/04_bmg_grouped_gemm)). See Comment 29 for full references.
+> Duplicate of Comment 29. `compat::wait()` is **required** by the sycl-tla framework — `gemm_op.run()` is async and returns immediately. All 14 official sycl-tla examples use this pattern ([source](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp), [example 04](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm)). See Comment 29 for full references.
 
 ---
 
