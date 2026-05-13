@@ -224,7 +224,14 @@ if __name__ == "__main__":
   - Source: [`device.hpp`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cute/util/compat/device.hpp) — `compat::wait()` definition
   - Source: [`gemm_universal_adapter.h`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cutlass/gemm/device/gemm_universal_adapter.h) — async `run()` 
   - Examples: [`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/09_bmg_grouped_gemm_f8)
-- **Use permalinks for sycl-tla references**: Always link to a specific commit hash (e.g., `/blob/688200285b.../`) rather than `/blob/main/`, since sycl-tla is actively developed and files move frequently.
+- **Use permalinks for sycl-tla references**: Always link to a specific commit hash (e.g., `/blob/357f75c5.../`) rather than `/blob/main/`, since sycl-tla is actively developed and files/paths move frequently. The repo has been force-pushed/rebased in the past, invalidating old commit hashes — always verify permalinks before using them.
+  - Current known-good commit: `357f75c57a962d6ced7e3d5f821276a494ee2aa4`
+  - Key paths at this commit:
+    - `include/cute/util/compat/device.hpp` — `compat::wait()` definition
+    - `include/cutlass/gemm/device/gemm_universal_adapter.h` — async `run()`
+    - `examples/04_bmg_grouped_gemm/` — grouped GEMM example (was `examples/sycl/04_bmg_grouped_gemm/` at older commits)
+    - `examples/09_bmg_grouped_gemm_f8/` — FP8 grouped GEMM example
+    - `examples/00_bmg_gemm/00_bmg_gemm.cpp` — basic GEMM with compat docs
 
 ## Two-PR Rebase Workflow
 
@@ -368,7 +375,7 @@ Process for evaluating automated review comments (e.g., GitHub Copilot bot):
   git push --force
   ```
 - **Commit order**: Always commit torch-xpu-ops first, then PyTorch (xpu.txt dependency)
-- **Force-push**: Both PR branches use force-push after rebase or amend
+- **No force push by default**: Do not force-push PR branches unless explicitly requested by the user. New changes should be added as new commits on top of the existing branch. Force-push is only allowed for rebase operations when the user explicitly asks.
 
 ## Building PyTorch from Source with XPU Support
 
