@@ -505,6 +505,68 @@ The CI script also installs GPU drivers (Level Zero, OpenCL, media) and developm
 | torch-xpu-ops repository | https://github.com/intel/torch-xpu-ops |
 | sycl-tla (CUTLASS for Intel) | https://github.com/intel/sycl-tla |
 
+## Model-Level Accuracy Validation
+
+### Why Model-Level Tests
+
+Unit tests validate operator correctness with small shapes (M=16, K=64). Model-level tests validate with **real production shapes** from models like Llama 4 Scout MoE, catching issues that only appear at scale:
+- BF16 accumulation error grows with K (reduction dimension)
+- Memory/allocation patterns differ at real dimensions
+- Numerical stability under realistic value distributions
+
+### How to Write Model-Level Tests
+
+1. **Research the model architecture** to find where the operator is called and extract exact tensor shapes (hidden_size, intermediate_size, num_experts)
+2. **Use the 2Dx3D input mode** for MoE — this is the real torchao FP8 training pattern
+3. **Scale down M (tokens)** to fit GPU memory while keeping K, N, G at real values
+4. **Cross-device comparison**: create tensors on CPU, compute float32 reference on CPU, run kernel on XPU, compare outputs
+5. **Report error statistics**: max/mean absolute error, percentile distribution, ULP analysis
+
+### Llama 4 Scout Shape Reference
+
+The torchao MoE FP8 training path (`pytorch/ao`) intercepts `torch._grouped_mm` on `Float8TrainingWeightWrapperTensor` and routes through `torch._scaled_grouped_mm`:
+
+```
+Gate/Up:  A=(M, 5120) FP8  x  B=(G, 5120, 8192) FP8  →  (M, 8192) BF16
+Down:     A=(M, 8192) FP8  x  B=(G, 8192, 5120) FP8  →  (M, 5120) BF16
+```
+
+Where K=5120 (hidden_size), N=8192 (intermediate_size), G=experts per device.
+
+Source: `pytorch/ao:benchmarks/prototype/moe_training/benchmark_scaled_grouped_mm_dq.py`
+
+### Running Model Tests
+
+```bash
+# Local SYCL extension
+cd /tmp && python <repo>/test/test_llama4_model_shapes.py TestLlama4ExtensionShapes
+
+# Full PyTorch dispatch chain
+cd /tmp && python <repo>/test/test_llama4_model_shapes.py TestLlama4Dispatch
+```
+
+### BF16 Accumulation Error Budget
+
+When comparing XPU (BF16 accumulation) against CPU (float32 accumulation), errors are bounded by BF16 ULP:
+
+| K | Max Error | Mean Error | Explanation |
+|---|---|---|---|
+| 64 | 0.25 | 0.005 | 1 ULP at output magnitude ~42 |
+| 256 | 0.50 | 0.011 | 1 ULP at output magnitude ~84 |
+| 1024 | 1.00 | 0.022 | 1 ULP at output magnitude ~150 |
+| 5120 | 2.00 | 0.047 | 1 ULP at output magnitude ~338 |
+| 8192 | 2.00 | 0.061 | 1 ULP at output magnitude ~430 |
+
+**All max errors = exactly 1 BF16 ULP.** BF16 has 7-bit mantissa, so ULP = 2^(exponent-7):
+- |value| ∈ [128, 256): ULP = 1.0
+- |value| ∈ [256, 512): ULP = 2.0
+
+For model-level tests with K=5120–8192, use `atol=4.0, rtol=0.1` (tolerates up to 2 ULPs).
+
+### Test Results
+
+See `docs/llama4_model_validation.md` for detailed results. Summary: 18/18 tests pass, ~50% of elements match exactly, 99.9% within 0.5 absolute error, mean relative error < 0.5%.
+
 ## Reference: Completed Ports
 
 | Kernel | Dev repo | torch-xpu-ops PR | PyTorch PR |
