@@ -221,9 +221,9 @@ if __name__ == "__main__":
 - **sycl-tla ElementC type**: Must match the accumulator type (e.g., `float`), not the output type (e.g., `bfloat16`). The `CollectiveEpilogue` uses `ElementAccumulator` for C pointers.
 - **Namespace conflicts**: If the kernel header defines a namespace (e.g., `namespace grouped_mm`), don't name your wrapper function the same thing. Rename to avoid ambiguity.
 - **`compat::wait()` is required after every sycl-tla kernel launch**: `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results. All 14 official sycl-tla examples use this pattern. This is a framework requirement, not a design choice.
-  - Source: [`device.hpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp) — `compat::wait()` definition
-  - Source: [`gemm_universal_adapter.h`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cutlass/gemm/device/gemm_universal_adapter.h) — async `run()` 
-  - Examples: [`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/09_bmg_grouped_gemm_f8)
+  - Source: [`device.hpp`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cute/util/compat/device.hpp) — `compat::wait()` definition
+  - Source: [`gemm_universal_adapter.h`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cutlass/gemm/device/gemm_universal_adapter.h) — async `run()` 
+  - Examples: [`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/09_bmg_grouped_gemm_f8)
 - **Use permalinks for sycl-tla references**: Always link to a specific commit hash (e.g., `/blob/688200285b.../`) rather than `/blob/main/`, since sycl-tla is actively developed and files move frequently.
 
 ## Two-PR Rebase Workflow

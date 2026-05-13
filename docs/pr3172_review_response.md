@@ -364,10 +364,10 @@
 **Reply**:
 > `compat::wait()` is **required** by the sycl-tla kernel launch model — this is not a design choice but a framework requirement:
 >
-> 1. `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately ([`gemm_universal_adapter.h`, SYCL branch](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cutlass/gemm/device/gemm_universal_adapter.h)).
-> 2. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results ([`include/cute/util/compat/device.hpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp)).
-> 3. **All 14 official sycl-tla examples** use this exact pattern, including the grouped GEMM examples ([`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/09_bmg_grouped_gemm_f8)).
-> 4. Example 00 explicitly documents: *"CUTLASS on SYCL uses the compatibility library compat for e.g. default in-order queue"* ([`00_bmg_gemm.cpp`](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/examples/00_bmg_gemm/00_bmg_gemm.cpp)).
+> 1. `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately ([`gemm_universal_adapter.h`, SYCL branch](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cutlass/gemm/device/gemm_universal_adapter.h)).
+> 2. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results ([`include/cute/util/compat/device.hpp`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cute/util/compat/device.hpp)).
+> 3. **All 14 official sycl-tla examples** use this exact pattern, including the grouped GEMM examples ([`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/09_bmg_grouped_gemm_f8)).
+> 4. Example 00 explicitly documents: *"CUTLASS on SYCL uses the compatibility library compat for e.g. default in-order queue"* ([`00_bmg_gemm.cpp`](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/00_bmg_gemm/00_bmg_gemm.cpp)).
 >
 > Removing it would cause data races. A future optimization could pass a custom `sycl::queue*` via the `stream` parameter for deferred synchronization, but this requires upstream sycl-tla changes.
 
@@ -532,7 +532,7 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 **Status**: ⚠️ Won't Fix — duplicate of Comments 29/35. `compat::wait()` is required by the sycl-tla runtime.
 
 **Reply**:
-> Duplicate of Comment 29. `compat::wait()` is **required** by the sycl-tla framework — `gemm_op.run()` is async and returns immediately. All 14 official sycl-tla examples use this pattern ([source](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/include/cute/util/compat/device.hpp), [example 04](https://github.com/intel/sycl-tla/tree/688200285b0cf059890943a4a3946396241cfd50/examples/04_bmg_grouped_gemm)). See Comment 29 for full references.
+> Duplicate of Comment 29. `compat::wait()` is **required** by the sycl-tla framework — `gemm_op.run()` is async and returns immediately. All 14 official sycl-tla examples use this pattern ([source](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/include/cute/util/compat/device.hpp), [example 04](https://github.com/intel/sycl-tla/tree/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm)). See Comment 29 for full references.
 
 ---
 
@@ -577,7 +577,7 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 **Status**: ❌ Reject — duplicate of Comment 28 (round 4)
 
 **Reply**:
-> Duplicate of [earlier comment](#comment-28--stride_b_vec-n-k-1-mismatch-scaledgroupedmm--reject). This is correct as-is. `LayoutB = cutlass::layout::RowMajor`, and B enters as transposed (physical N×K row-major). The `{N, K, 1}` tuple passed to `make_cute_packed_stride(StrideB{}, ...)` describes the physical storage extents, which is the correct convention for CUTLASS/sycl-tla. This matches the [sycl-tla grouped GEMM example](https://github.com/intel/sycl-tla/blob/688200285b0cf059890943a4a3946396241cfd50/examples/sycl/04_bmg_grouped_gemm/04_bmg_grouped_gemm.cpp) and all 18 model-level tests with real Llama 4 shapes pass correctly.
+> Duplicate of [earlier comment](#comment-28--stride_b_vec-n-k-1-mismatch-scaledgroupedmm--reject). This is correct as-is. `LayoutB = cutlass::layout::RowMajor`, and B enters as transposed (physical N×K row-major). The `{N, K, 1}` tuple passed to `make_cute_packed_stride(StrideB{}, ...)` describes the physical storage extents, which is the correct convention for CUTLASS/sycl-tla. This matches the [sycl-tla grouped GEMM example](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm/04_bmg_grouped_gemm.cpp) and all 18 model-level tests with real Llama 4 shapes pass correctly.
 
 ---
 
