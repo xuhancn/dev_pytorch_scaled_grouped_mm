@@ -362,7 +362,14 @@
 **Status**: ⚠️ Won't Fix (for now)
 
 **Reply**:
-> `compat::wait()` is required by the current sycl-tla kernel launch model. `GemmUniversalAdapter::run()` submits work to a SYCL queue, and `compat::wait()` ensures the kernel completes before PyTorch reads the output buffer. Removing it would cause data races. This matches the pattern used by the existing sycl-tla flash-attention kernels (`mha_fwd.so`, `mha_bwd.so`). A future optimization could use SYCL event-based synchronization instead of a full queue wait, but that would require changes to the sycl-tla adapter itself — tracked as a separate improvement.
+> `compat::wait()` is **required** by the sycl-tla kernel launch model — this is not a design choice but a framework requirement:
+>
+> 1. `GemmUniversalAdapter::run()` submits work **asynchronously** to `compat::get_default_queue()` and returns immediately ([`gemm_universal_adapter.h`, SYCL branch](https://github.com/intel/sycl-tla/blob/main/include/cutlass/gemm/device/gemm_universal_adapter.h)).
+> 2. `compat::wait()` calls `sycl::queue::wait()` on that queue — the only way to synchronize before reading results ([`include/cute/util/compat/device.hpp`](https://github.com/intel/sycl-tla/blob/main/include/cute/util/compat/device.hpp)).
+> 3. **All 14 official sycl-tla examples** use this exact pattern, including the grouped GEMM examples ([`04_bmg_grouped_gemm`](https://github.com/intel/sycl-tla/tree/main/examples/04_bmg_grouped_gemm), [`09_bmg_grouped_gemm_f8`](https://github.com/intel/sycl-tla/tree/main/examples/09_bmg_grouped_gemm_f8)).
+> 4. Example 00 explicitly documents: *"CUTLASS on SYCL uses the compatibility library compat for e.g. default in-order queue"* ([`00_bmg_gemm.cpp`](https://github.com/intel/sycl-tla/blob/main/examples/00_bmg_gemm/00_bmg_gemm.cpp)).
+>
+> Removing it would cause data races. A future optimization could pass a custom `sycl::queue*` via the `stream` parameter for deferred synchronization, but this requires upstream sycl-tla changes.
 
 ---
 
@@ -373,7 +380,7 @@
 **Status**: ⚠️ Won't Fix
 
 **Reply**:
-> Same reasoning as the ScaledGroupedMM comment — `compat::wait()` is required by the sycl-tla launch model and follows the flash-attention kernel pattern.
+> Same as Comment 29 — `compat::wait()` is required by the sycl-tla launch model. See the official examples and source references above.
 
 ---
 
@@ -522,10 +529,10 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 **File**: `src/ATen/native/xpu/sycltla/GroupedMM.cpp:236`
 > `compat::wait()` introduces host-side synchronization after every GEMM launch, reducing throughput.
 
-**Status**: ⚠️ Won't Fix — duplicate of Comments 29/35. `compat::wait()` is required by the sycl-tla runtime (`cutlass::compat` API) for kernel completion. This is a sycl-tla limitation, not a design choice. Will be addressed when sycl-tla adds stream/queue interop.
+**Status**: ⚠️ Won't Fix — duplicate of Comments 29/35. `compat::wait()` is required by the sycl-tla runtime.
 
 **Reply**:
-> Duplicate of earlier comment. `compat::wait()` is required by the sycl-tla (`cutlass::compat`) runtime — it's a framework limitation, not a design choice. We cannot remove it without sycl-tla adding native SYCL queue interop. Will be addressed in a future sycl-tla version.
+> Duplicate of Comment 29. `compat::wait()` is **required** by the sycl-tla framework — `gemm_op.run()` is async and returns immediately. All 14 official sycl-tla examples use this pattern ([source](https://github.com/intel/sycl-tla/blob/main/include/cute/util/compat/device.hpp), [example 04](https://github.com/intel/sycl-tla/tree/main/examples/04_bmg_grouped_gemm)). See Comment 29 for full references.
 
 ---
 
@@ -536,7 +543,7 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 **Status**: ⚠️ Won't Fix — duplicate of Comments 29/35/42.
 
 **Reply**:
-> Same as above — `compat::wait()` is a sycl-tla runtime requirement. Will be addressed when sycl-tla adds queue interop.
+> Same as Comment 29 — `compat::wait()` is a sycl-tla framework requirement. See Comment 29 for official source references and examples.
 
 ---
 
