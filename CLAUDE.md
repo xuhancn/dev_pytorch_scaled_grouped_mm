@@ -220,6 +220,145 @@ if __name__ == "__main__":
 - **sycl-tla ElementC type**: Must match the accumulator type (e.g., `float`), not the output type (e.g., `bfloat16`). The `CollectiveEpilogue` uses `ElementAccumulator` for C pointers.
 - **Namespace conflicts**: If the kernel header defines a namespace (e.g., `namespace grouped_mm`), don't name your wrapper function the same thing. Rename to avoid ambiguity.
 
+## Two-PR Rebase Workflow
+
+When PyTorch `main` advances, rebase the two PR branches in dependency order:
+
+### Step 1: Rebase torch-xpu-ops
+
+```bash
+cd pytorch/third_party/torch-xpu-ops
+git fetch upstream
+git rebase upstream/main
+# torch-xpu-ops rebases are usually clean
+git push origin xpu-scaled-grouped-mm --force
+```
+
+### Step 2: Rebase PyTorch
+
+```bash
+cd pytorch
+git fetch upstream
+git rebase upstream/main
+# Resolve conflicts (see common patterns below)
+# Update xpu.txt with new torch-xpu-ops commit hash
+echo "<new-hash>" > third_party/xpu.txt
+git add third_party/xpu.txt
+git rebase --continue
+git push origin xpu-scaled-grouped-mm --force
+```
+
+### Common Rebase Conflicts
+
+| File | Pattern | Resolution |
+|------|---------|------------|
+| `aten/src/ATen/CMakeLists.txt` | `CONFIGURE_DEPENDS` style changes for XPU globs | Use `CONFIGURE_DEPENDS` with the new glob pattern style |
+| `third_party/xpu.txt` | Hash conflict | Replace with the new torch-xpu-ops commit hash |
+| `torch/csrc/inductor/aoti_torch/generated/c_shim_xpu.h` | `TORCH_FEATURE_VERSION` guards added upstream | Regenerate with the correct version guard for new ops |
+| `caffe2/CMakeLists.txt` | Fork URL or submodule changes | Keep the fork URL if torch-xpu-ops PR hasn't merged yet |
+
+### Fixup Commit Pattern
+
+When multiple files need updating after rebase, use interactive rebase with fixup:
+
+```bash
+# Make fixes on top of rebase
+git commit -m "fixup! <original commit message>"
+# Then squash into original
+git rebase -i --autosquash upstream/main
+```
+
+## Wheel-Level Testing
+
+To test torch-xpu-ops changes through the full PyTorch dispatch chain (like CI does):
+
+### Step 1: Commit and push torch-xpu-ops changes
+
+```bash
+cd pytorch/third_party/torch-xpu-ops
+git add -A && git commit -m "your changes"
+git push origin your-branch
+```
+
+### Step 2: Update xpu.txt and rebuild PyTorch
+
+```bash
+cd pytorch
+# Update xpu.txt with the new commit hash
+git log --format='%H' -1 -- third_party/torch-xpu-ops > third_party/xpu.txt
+
+# Rebuild (this fetches torch-xpu-ops from the URL in caffe2/CMakeLists.txt)
+source ~/intel/oneapi/setvars.sh
+source ~/miniforge3/etc/profile.d/conda.sh && conda activate xu_pytorch
+USE_XPU=1 TORCH_XPU_ARCH_LIST=bmg python setup.py develop
+```
+
+### Step 3: Sync stale .so files (editable install workaround)
+
+```bash
+cp -a pytorch/torch/lib/*.so \
+  $(python -c "import site; print(site.getsitepackages()[0])")/torch/lib/
+```
+
+### Step 4: Run tests from /tmp
+
+```bash
+# torch-xpu-ops tests (through full dispatch)
+cd /tmp && python pytorch/third_party/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py
+
+# PyTorch upstream tests (CUDA tests run on XPU where applicable)
+cd /tmp && python pytorch/test/test_scaled_matmul_cuda.py -k '_scaled_grouped_mm'
+```
+
+## Temp Branch Workflow
+
+When testing review changes or experimental modifications before applying to the real PR:
+
+1. **Create temp branch** from the PR branch:
+   ```bash
+   git checkout xpu-scaled-grouped-mm
+   git checkout -b xpu-scaled-grouped-mm-review-test
+   ```
+2. **Apply and test changes** on the temp branch
+3. **Push temp branch** for wheel-level testing (xpu.txt must point to a pushed commit)
+4. **After validation**, cherry-pick the commit to the real PR branch:
+   ```bash
+   git checkout xpu-scaled-grouped-mm
+   git cherry-pick <commit-hash>
+   git push origin xpu-scaled-grouped-mm --force
+   ```
+5. **Clean up** the temp branch:
+   ```bash
+   git branch -D xpu-scaled-grouped-mm-review-test
+   git push origin --delete xpu-scaled-grouped-mm-review-test
+   ```
+
+## PR Review Comment Handling
+
+Process for evaluating automated review comments (e.g., GitHub Copilot bot):
+
+1. **Fetch all review threads** from the PR via GitHub API
+2. **Categorize** each comment:
+   - **Already fixed**: Issue was addressed in a later commit
+   - **Accept**: Valid suggestion, implement it
+   - **Reject**: Suggestion is incorrect (e.g., bot misunderstands domain conventions)
+   - **Won't fix**: Valid concern but out of scope or would cause other issues
+3. **Create review response doc** (`docs/prNNNN_review_response.md`) with:
+   - Each comment's location, suggestion, and category
+   - Copy-paste-ready **Reply** text for each thread
+4. **Test accepted changes locally** before applying to the PR
+5. **Apply via temp branch workflow** (see above)
+
+## Git Conventions for PRs
+
+- **No AI Co-authored-by trailers**: Do not include `Co-authored-by: Copilot <...>` or similar AI attribution in PR commits. If accidentally added, strip with:
+  ```bash
+  git commit --amend  # remove the trailer in editor
+  git push --force
+  ```
+- **Commit order**: Always commit torch-xpu-ops first, then PyTorch (xpu.txt dependency)
+- **Force-push**: Both PR branches use force-push after rebase or amend
+
 ## Building PyTorch from Source with XPU Support
 
 **Official doc**: https://github.com/pytorch/pytorch#intel-gpu-support
@@ -267,6 +406,7 @@ python -m pip install --no-build-isolation -v -e .
   // Change: explicit float_exmy_base<T, Derived>(float x)
   // To:     explicit float_exmy_base(float x)
   ```
+- **Incremental `cmake --build build` fails**: Running `cmake --build build` directly fails with `ModuleNotFoundError: No module named 'tools'`. Always use `python setup.py develop` or `python -m pip install --no-build-isolation -v -e .` for building — these set up the Python path correctly.
 - **Verify XPU was compiled**: After build, check `torch._C._has_xpu` (not `torch.xpu.is_available()` which also requires hardware). If `_has_xpu` is False but cmake shows `USE_XPU=1`, the issue is likely stale site-packages libraries (see above).
 
 ### Verifying the Build
@@ -359,3 +499,4 @@ The CI script also installs GPU drivers (Level Zero, OpenCL, media) and developm
 | Kernel | Dev repo | torch-xpu-ops PR | PyTorch PR |
 |--------|----------|-------------------|------------|
 | `_grouped_mm` | `dev_pytorch_group_mm` | [#3122](https://github.com/intel/torch-xpu-ops/pull/3122) | [#178242](https://github.com/pytorch/pytorch/pull/178242) |
+| `_scaled_grouped_mm` | `dev_pytorch_scaled_grouped_mm` | [#3172](https://github.com/intel/torch-xpu-ops/pull/3172) | [#178354](https://github.com/pytorch/pytorch/pull/178354) |
