@@ -351,6 +351,11 @@ Process for evaluating automated review comments (e.g., GitHub Copilot bot):
 
 ## Git Conventions for PRs
 
+- **Run lintrunner before committing**: Always run `lintrunner <files>` on changed files before committing to torch-xpu-ops. The repo has `.lintrunner.toml` with FLAKE8, CLANGTIDY, RUFF, and other linters. Run `lintrunner init` on first use.
+  ```bash
+  cd pytorch/third_party/torch-xpu-ops
+  lintrunner path/to/changed/file.py path/to/changed/file.cpp
+  ```
 - **No AI Co-authored-by trailers**: Do not include `Co-authored-by: Copilot <...>` or similar AI attribution in PR commits. If accidentally added, strip with:
   ```bash
   git commit --amend  # remove the trailer in editor
