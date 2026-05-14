@@ -23,8 +23,8 @@ docs/                 <- CUDA analysis, porting plan, test reports
 
 | Item | Value |
 |------|-------|
-| PyTorch source | `/home/xu/xu_github/pytorch` |
-| torch-xpu-ops source | `/home/xu/xu_github/torch-xpu-ops` |
+| PyTorch source | `/home/xu/conda_root/xu_pytorch/pytorch` |
+| torch-xpu-ops source | `/home/xu/conda_root/xu_pytorch/pytorch/third_party/torch-xpu-ops` |
 | Conda env | `xu_pytorch` |
 | oneAPI setup | `source ~/intel/oneapi/setvars.sh` |
 | GPU | Intel Arc B580 |
@@ -48,14 +48,14 @@ cd sycl_kernel && python setup.py develop
 
 ### Run tests (always from /tmp to avoid torch/_C import conflicts)
 ```bash
-cd /tmp && python /home/xu/xu_github/dev_pytorch_scaled_grouped_mm/test/test_scaled_grouped_mm.py
+cd /tmp && python /home/xu/conda_root/xu_pytorch/dev_pytorch_scaled_grouped_mm/test/test_scaled_grouped_mm.py
 # Run a single test:
-cd /tmp && python /home/xu/xu_github/dev_pytorch_scaled_grouped_mm/test/test_scaled_grouped_mm.py TestClassName.test_method_name
+cd /tmp && python /home/xu/conda_root/xu_pytorch/dev_pytorch_scaled_grouped_mm/test/test_scaled_grouped_mm.py TestClassName.test_method_name
 ```
 
 ### Run upstream CUDA tests (for reference)
 ```bash
-cd /tmp && python /home/xu/xu_github/pytorch/test/test_scaled_matmul_cuda.py -k '_scaled_grouped_mm'
+cd /tmp && python /home/xu/conda_root/xu_pytorch/pytorch/test/test_scaled_matmul_cuda.py -k '_scaled_grouped_mm'
 ```
 
 ## Workflow — Three Phases
@@ -126,7 +126,7 @@ Submit to PyTorch upstream via torch-xpu-ops (kernel) and pytorch (dispatch):
 |------|-------|
 | Operator registry | `pytorch/aten/src/ATen/native/native_functions.yaml` |
 | CUDA dispatch functions | `pytorch/aten/src/ATen/native/cuda/*.cpp` |
-| XPU dispatch functions | `pytorch/aten/src/ATen/native/mkldnn/xpu/*.cpp` |
+| XPU dispatch functions | `pytorch/aten/src/ATen/native/xpu/*.cpp` (new pattern) or `pytorch/aten/src/ATen/native/mkldnn/xpu/*.cpp` (legacy) |
 | torch-xpu-ops regular SYCL kernels | `torch-xpu-ops/src/ATen/native/xpu/sycl/*.cpp` |
 | torch-xpu-ops sycl-tla kernels | `torch-xpu-ops/src/ATen/native/xpu/sycltla/*.cpp` |
 | torch-xpu-ops CMake | `torch-xpu-ops/src/ATen/CMakeLists.txt` |
@@ -235,30 +235,68 @@ if __name__ == "__main__":
 
 ## Two-PR Rebase Workflow
 
-When PyTorch `main` advances, rebase the two PR branches in dependency order:
+When PyTorch `main` advances, rebase all four PR branches in dependency order. The split structure requires rebasing in sequence:
 
-### Step 1: Rebase torch-xpu-ops
+### Branch Structure (Split PRs)
+
+```
+torch-xpu-ops:
+  origin/main → xpu-grouped-mm (1 commit) → xpu-scaled-grouped-mm (+1 commit)
+
+pytorch:
+  upstream/main → xpu-grouped-mm (1 commit) → xpu-scaled-grouped-mm (+1 commit)
+```
+
+### Step 1: Rebase torch-xpu-ops (both branches)
 
 ```bash
 cd pytorch/third_party/torch-xpu-ops
-git fetch upstream
-git rebase upstream/main
-# torch-xpu-ops rebases are usually clean
-git push origin xpu-scaled-grouped-mm --force
+git fetch origin
+
+# Phase 1 branch
+git checkout xpu-grouped-mm
+git rebase origin/main
+# Note new hash: GROUPED_HASH=$(git rev-parse HEAD)
+
+# Phase 2 branch — rebase only its own commit onto updated Phase 1
+git rebase --onto xpu-grouped-mm <old-grouped-hash> xpu-scaled-grouped-mm
+# Note new hash: SCALED_HASH=$(git rev-parse HEAD)
 ```
 
-### Step 2: Rebase PyTorch
+### Step 2: Rebase PyTorch (both branches)
 
 ```bash
 cd pytorch
 git fetch upstream
+
+# Phase 1 branch
+git checkout xpu-grouped-mm
 git rebase upstream/main
-# Resolve conflicts (see common patterns below)
-# Update xpu.txt with new torch-xpu-ops commit hash
-echo "<new-hash>" > third_party/xpu.txt
-git add third_party/xpu.txt
-git rebase --continue
-git push origin xpu-scaled-grouped-mm --force
+echo "$GROUPED_HASH" > third_party/xpu.txt
+git add third_party/xpu.txt && git commit --amend --no-edit
+
+# Phase 2 branch — rebase only its own commit onto updated Phase 1
+git rebase --onto xpu-grouped-mm <old-grouped-hash> xpu-scaled-grouped-mm
+# Resolve xpu.txt conflict: echo "$SCALED_HASH" > third_party/xpu.txt
+git add third_party/xpu.txt && GIT_EDITOR=true git rebase --continue
+```
+
+### Step 3: Build, test, and push
+
+```bash
+# Build from the Phase 2 branch (includes both operators)
+USE_XPU=1 TORCH_XPU_ARCH_LIST=bmg python setup.py develop
+
+# Test both suites from /tmp
+cd /tmp
+python pytorch/third_party/torch-xpu-ops/test/xpu/test_grouped_mm_xpu.py
+python pytorch/third_party/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py
+
+# Force-push all 4 branches
+cd pytorch/third_party/torch-xpu-ops
+git push --force origin xpu-grouped-mm xpu-scaled-grouped-mm
+cd pytorch
+git push --force origin xpu-grouped-mm xpu-scaled-grouped-mm
 ```
 
 ### Common Rebase Conflicts
@@ -362,6 +400,24 @@ Process for evaluating automated review comments (e.g., GitHub Copilot bot):
 4. **Test accepted changes locally** before applying to the PR
 5. **Apply via temp branch workflow** (see above)
 
+### Known Bot False Positives
+
+- **Stride B `{N, K, 1}` in grouped GEMM**: The bot repeatedly flags `make_cute_packed_stride(StrideB{}, {N, K, 1})` as incorrect, claiming it should be `{K, N, 1}`. This is **wrong** — `{N, K, 1}` is the correct convention for CUTLASS/sycl-tla grouped GEMM with `LayoutB = RowMajor`. Verified against the [sycl-tla grouped GEMM example](https://github.com/intel/sycl-tla/blob/357f75c57a962d6ced7e3d5f821276a494ee2aa4/examples/04_bmg_grouped_gemm/04_bmg_grouped_gemm.cpp#L336) which uses the same `{N, K, 1}` pattern. The parameters are problem dimensions, not strides — CUTLASS computes the actual strides from the layout type.
+- **Test b shape mismatch**: The bot claims `b = torch.randn(n_groups, k, n)` is wrong and should be `(n_groups, n, k)`. But the tests pass correctly — verify the actual operator contract before changing shapes based on bot suggestions.
+
+### Common Valid Bot Suggestions
+
+These patterns recur across PRs and should be addressed:
+
+| Pattern | Fix |
+|---------|-----|
+| `offs_host[g]` without `TORCH_CHECK(offs.has_value())` | Add validation block before ragged paths |
+| `bias` argument silently ignored | Add `TORCH_CHECK(!bias.has_value(), "not supported")` |
+| `out.data_ptr()` without contiguity/dtype check | Add `TORCH_CHECK(out.is_contiguous() && out.scalar_type() == kBFloat16)` |
+| `offs` read as `int32` without dtype validation | Add `TORCH_CHECK(offs->scalar_type() == at::kInt)` |
+| Missing `#include <optional>` in headers | Add explicit include |
+| Tests hard-fail without SYCLTLA | Add try/except availability gate |
+
 ## Git Conventions for PRs
 
 - **Run lintrunner before committing**: Always run `lintrunner <files>` on changed files before committing to torch-xpu-ops. The repo has `.lintrunner.toml` with FLAKE8, CLANGTIDY, RUFF, and other linters. Run `lintrunner init` on first use.
@@ -376,6 +432,15 @@ Process for evaluating automated review comments (e.g., GitHub Copilot bot):
   ```
 - **Commit order**: Always commit torch-xpu-ops first, then PyTorch (xpu.txt dependency)
 - **No force push by default**: Do not force-push PR branches unless explicitly requested by the user. New changes should be added as new commits on top of the existing branch. Force-push is only allowed for rebase operations when the user explicitly asks.
+- **Stale cmake cache after branch switch**: After switching between `xpu-grouped-mm` and `xpu-scaled-grouped-mm` branches, the cmake build cache for sycl-tla targets may be stale. Delete the cached target directory and reconfigure:
+  ```bash
+  rm -rf build/caffe2/aten_xpu/src/CMakeFiles/torch-xpu-ops-sycltla-*.dir
+  cd build && cmake .. -DUSE_XPU=ON
+  ```
+- **Stale `enum_tag.h` after branch switch**: Generated file `build/torch/headeronly/core/enum_tag.h` can conflict with `build/aten/src/ATen/core/enum_tag.h` after switching branches. Fix by deleting both and rebuilding:
+  ```bash
+  rm -f build/torch/headeronly/core/enum_tag.h build/aten/src/ATen/core/enum_tag.h
+  ```
 
 ## Building PyTorch from Source with XPU Support
 
@@ -415,16 +480,22 @@ python -m pip install --no-build-isolation -v -e .
   ```bash
   cp -a pytorch/torch/lib/*.so $(python -c "import site; print(site.getsitepackages()[0])")/torch/lib/
   ```
-- **sycl-tla `-Werror` failures**: The `torch-xpu-ops/cmake/BuildFlags.cmake` adds `-Werror` to SYCL host flags. With newer GCC (14+) and C++20, sycl-tla headers trigger warnings (`-Wtemplate-id-cdtor`, `-Wreorder`, `-Wunused-variable`, `-Wunused-but-set-variable`). Workaround: comment out `-Werror` in `BuildFlags.cmake` line 57:
+- **sycl-tla `-Werror` failures**: The `torch-xpu-ops/cmake/BuildFlags.cmake` adds `-Werror` to SYCL host flags. sycl-tla headers trigger warnings (`-Wunused-variable`, `-Wunused-local-typedefs`, `-Wreorder`) that cannot be fixed locally. The proper fix is to guard `-Werror` with `REPLACE_FLAGS_FOR_SYCLTLA` in `BuildFlags.cmake`:
   ```cmake
-  # list(APPEND SYCL_HOST_FLAGS -Werror)
+  if(REPLACE_FLAGS_FOR_SYCLTLA)
+    list(APPEND SYCL_HOST_FLAGS -Wno-error)
+  else()
+    list(APPEND SYCL_HOST_FLAGS -Werror)
+  endif()
   ```
+  This is already applied in PR #3122. For local standalone builds, comment out `-Werror` in `BuildFlags.cmake` line 57.
 - **`exmy_base.h` C++20 error**: GCC 14+ in C++20 mode rejects template-id on constructors. Patch `build/_deps/repo-sycl-tla-src/include/cutlass/exmy_base.h`:
   ```cpp
   // Change: explicit float_exmy_base<T, Derived>(float x)
   // To:     explicit float_exmy_base(float x)
   ```
 - **Incremental `cmake --build build` fails**: Running `cmake --build build` directly fails with `ModuleNotFoundError: No module named 'tools'`. Always use `python setup.py develop` or `python -m pip install --no-build-isolation -v -e .` for building — these set up the Python path correctly.
+- **`target_compile_options()` does NOT work for SYCL targets**: The SYCL compilation pipeline builds its flags from `CMAKE_HOST_FLAGS` (set by `set_build_flags()` in `BuildFlags.cmake`), bypassing cmake's target-level options entirely. Do not try to suppress warnings with `target_compile_options(target PRIVATE -Wno-error)` — it will have no effect. Modify the flag lists in `BuildFlags.cmake` instead.
 - **Verify XPU was compiled**: After build, check `torch._C._has_xpu` (not `torch.xpu.is_available()` which also requires hardware). If `_has_xpu` is False but cmake shows `USE_XPU=1`, the issue is likely stale site-packages libraries (see above).
 
 ### Verifying the Build

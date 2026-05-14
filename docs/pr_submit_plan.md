@@ -23,10 +23,19 @@ PR #3122 (torch-xpu-ops: _grouped_mm kernel)
 
 | # | Repo | Operator | Branch | Status | Lines |
 |---|------|----------|--------|--------|-------|
-| #3122 | torch-xpu-ops | `_grouped_mm` | `xpu-grouped-mm` | Open, needs update | ~724 |
-| #178242 | pytorch | `_grouped_mm` | `xpu-grouped-mm` | Open, draft, needs update | ~40 |
-| #3172 | torch-xpu-ops | `_scaled_grouped_mm` | `xpu-scaled-grouped-mm` | Open, needs trimming | ~1203 |
-| #178354 | pytorch | `_scaled_grouped_mm` | `xpu-scaled-grouped-mm` | Open, draft, needs trimming | ~165 |
+| #3122 | torch-xpu-ops | `_grouped_mm` | `xpu-grouped-mm` | Open, rebased to latest main | ~724 |
+| #178242 | pytorch | `_grouped_mm` | `xpu-grouped-mm` | Open, draft, rebased to latest main | ~40 |
+| #3172 | torch-xpu-ops | `_scaled_grouped_mm` | `xpu-scaled-grouped-mm` | Open, rebased to latest main | ~1203 |
+| #178354 | pytorch | `_scaled_grouped_mm` | `xpu-scaled-grouped-mm` | Open, draft, rebased to latest main | ~165 |
+
+### Branch Commits (last rebase)
+
+| Branch | Repo | Commit | Base |
+|---|---|---|---|
+| `xpu-grouped-mm` | torch-xpu-ops | `517849aadbb8` | `origin/main` |
+| `xpu-scaled-grouped-mm` | torch-xpu-ops | `753318bddaa2` | `xpu-grouped-mm` |
+| `xpu-grouped-mm` | pytorch | `353eeef08c1` | `upstream/main` |
+| `xpu-scaled-grouped-mm` | pytorch | `cc541412a38` | `xpu-grouped-mm` |
 
 ---
 
@@ -47,6 +56,7 @@ PR #3122 (torch-xpu-ops: _grouped_mm kernel)
 | `src/ATen/native/xpu/GroupedMM.cpp` | NEW | 42 | `#ifdef USE_SYCLTLA` guarded wrapper |
 | `src/ATen/native/xpu/GroupedMM.h` | NEW | 26 | wrapper header: `is_grouped_mm_available()` + `bf16bf16_grouped_mm()` |
 | `src/ATen/CMakeLists.txt` | EDIT | 2 | add `native/xpu/sycltla/*.cpp` glob + header install |
+| `cmake/BuildFlags.cmake` | EDIT | 6 | Guard `-Werror` with `REPLACE_FLAGS_FOR_SYCLTLA` → `-Wno-error` for sycl-tla targets |
 | `test/xpu/test_grouped_mm_xpu.py` | NEW | 168 | unit tests for all 4 input modes |
 
 #### Checklist
@@ -216,6 +226,33 @@ All errors are within 1 BF16 ULP — the theoretical minimum for BF16 vs float32
 2. **CUTLASS kernel types duplicated**: The sycl-tla kernel type definitions (TileShape, TiledMma, etc.) are identical to `GroupedMM.cpp`. Since both `.cpp` files are compiled separately, the types are duplicated in `ScaledGroupedMM.cpp`.
 
 3. **Wider tolerances**: `atol=0.2, rtol=0.05` vs CUDA's `atol=5e-2, rtol=5e-4`. The dequantize-then-GEMM approach truncates to BF16 before the matrix multiply, losing precision compared to a fused kernel.
+
+## PR Review Comments Summary
+
+Automated review analysis (rounds 1–6):
+
+### PR #3122 (GroupedMM) — 30 threads, 22 unresolved
+
+### PR #3172 (ScaledGroupedMM) — 30 threads, 22 unresolved
+
+### Categories
+
+| Category | Count | Valid? | Priority | Action |
+|----------|-------|--------|----------|--------|
+| `offs` validation (TORCH_CHECK) | ~12 | Yes | HIGH | Add validation before ragged paths |
+| Stride B `{N,K,1}` | ~5 | **No — false positive** | — | Reject with explanation |
+| `bias` not handled | 2-3 | Yes | LOW | Add `TORCH_CHECK(!bias)` |
+| `out` contiguity/dtype check | ~4 | Yes | MED | Add validation |
+| `compat::wait()` sync | 1 | Known limitation | DEFER | Not fixable in current arch |
+| Test b shape mismatch | 3-4 | Needs verification | MED | Verify against operator contract |
+| Test availability gate | 2 | Yes | LOW | Add try/except |
+| `offs` dtype check | 1 | Yes | LOW | Add `TORCH_CHECK(kInt)` |
+| `#include <optional>` | 1 | Yes | TRIVIAL | Add include |
+| Per-call allocation | 1 | Known limitation | DEFER | sycl-tla architecture limitation |
+
+### Key Finding: Stride B False Positive
+
+The bot's most-repeated suggestion (`{N, K, 1}` → `{K, N, 1}`) is **incorrect**. With `LayoutB = RowMajor`, `{N, K, 1}` gives stride dimensions (not shape) — N is the leading dimension for row-major B. This matches the sycl-tla grouped GEMM example exactly. All tests pass with current code.
 
 ## Reference
 
