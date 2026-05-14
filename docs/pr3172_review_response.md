@@ -612,3 +612,162 @@ This review generated 7 public comments + 4 suppressed (low-confidence).
 | ❌ Reject (duplicate) | 2 | stride_b `{N,K,1}` (#44-45) — same as #28/#33 |
 | ✅ Accept | 1 | Fix misleading "2 ULP" comment (#46) |
 | **Total** | **3** |
+
+---
+
+## Round 7 — 2026-05-13 (commits 876c04ae – 753318bd)
+
+10 new comments from Copilot reviewer across 2 sub-rounds. All are duplicates of previously addressed issues.
+
+### Comment 47 — Input dtype/rank validation for ScaledGroupedMM ✅ Already Fixed
+**File**: `ScaledGroupedMM.cpp:283`
+> `f8f8bf16_scaled_grouped_mm` only validates output tensor. No checks for mat_a/mat_b FP8 dtype, scale_a/scale_b float32, or rank constraints.
+
+**Status**: ✅ Already Fixed
+
+**Reply**:
+> Input validation (FP8 dtypes, scale dtypes, rank constraints) is handled by the PyTorch dispatch layer (`_scaled_grouped_mm_validate_inputs()` in the dispatch function). The kernel-level `out` dtype/contiguity check was added as defense-in-depth. The dispatch function in `ScaledGroupedBlas.cpp` only routes valid FP8 inputs to this kernel.
+
+---
+
+### Comment 48 — PR description mentions "existing" grouped_mm ⚠️ Won't Fix
+**File**: `GroupedMM.cpp:16`
+> PR description says scaled_grouped_mm "dispatches to the existing BF16 grouped GEMM sycl-tla kernel", but this PR introduces the grouped_mm kernel too. Clarify description.
+
+**Status**: ⚠️ Won't Fix — this is a PR description concern, not a code issue. In the split PR structure, PR #3122 introduces grouped_mm and PR #3172 adds scaled_grouped_mm on top. The description is accurate in the context of the PR stack.
+
+**Reply**:
+> In our split PR structure, PR #3122 introduces grouped_mm and PR #3172 (this PR) adds scaled_grouped_mm on top. The "existing" kernel refers to the one introduced by the base PR #3122, which lands first. The description is accurate for the PR stack context.
+
+---
+
+### Comment 49 — run_grouped_gemm duplicated ⚠️ Won't Fix
+**File**: `ScaledGroupedMM.cpp:150`
+> `run_grouped_gemm` is duplicated between GroupedMM.cpp and ScaledGroupedMM.cpp. Factor into shared utility.
+
+**Status**: ⚠️ Won't Fix
+
+**Reply**:
+> Intentional for now. The two kernels have different CUTLASS type configurations (`ElementA = bfloat16_t` vs `ElementA = float_e4m3_t`) and different epilogue setups. Factoring into a shared template would add complexity for minimal benefit at this stage. Can be refactored as a follow-up once both kernels are stable.
+
+---
+
+### Comment 50 — offs monotonicity in ScaledGroupedMM 2D×3D ⚠️ Won't Fix (duplicate)
+**File**: `ScaledGroupedMM.cpp:400`
+> offs values not validated for monotonicity/bounds in 2D×3D ragged-A mode.
+
+**Status**: ⚠️ Won't Fix — duplicate of Comment 27. Offset validation is the dispatch layer's responsibility.
+
+**Reply**:
+> Duplicate of Comment 27. Offset monotonicity/bounds validation is handled by `_grouped_mm_validate_inputs()` at the dispatch layer, matching the CUDA pattern.
+
+---
+
+### Comment 51 — compat::wait() in ScaledGroupedMM ⚠️ Won't Fix (duplicate)
+**File**: `ScaledGroupedMM.cpp:246`
+> compat::wait() forces device-wide sync, breaks stream concurrency.
+
+**Status**: ⚠️ Won't Fix — duplicate of Comments 29/43. sycl-tla framework requirement.
+
+**Reply**:
+> Duplicate — see Comment 29 for full explanation with source references. `compat::wait()` is required by the sycl-tla framework.
+
+---
+
+### Comment 52 — ragged-B per-group allocation in ScaledGroupedMM ⚠️ Won't Fix (duplicate)
+**File**: `ScaledGroupedMM.cpp:439`
+> Per-group b_slice/d_slice temporaries add allocations and D2D copies. Minimize overhead.
+
+**Status**: ⚠️ Won't Fix — duplicate of earlier performance suggestions. Out of scope for initial port.
+
+**Reply**:
+> Valid optimization for the future. The ragged-B path requires materialization because mat_b's per-group slices aren't contiguous. Can be optimized once sycl-tla supports strided operands.
+
+---
+
+### Comment 53 — compat::wait() in GroupedMM ⚠️ Won't Fix (duplicate)
+**File**: `GroupedMM.cpp:238`
+> Same compat::wait() concern for grouped_mm.
+
+**Status**: ⚠️ Won't Fix — duplicate of Comments 35/42. sycl-tla framework requirement.
+
+**Reply**:
+> Duplicate — see Comment 29 for full sycl-tla source references and examples.
+
+---
+
+### Comment 54 — offs monotonicity in GroupedMM 2D×3D ⚠️ Won't Fix (duplicate)
+**File**: `GroupedMM.cpp:335`
+> offs values not validated for monotonicity in 2D×3D mode.
+
+**Status**: ⚠️ Won't Fix — duplicate of Comment 32. Dispatch-layer responsibility.
+
+**Reply**:
+> Duplicate of Comment 32 — offset validation handled at dispatch layer.
+
+---
+
+### Comment 55 — Tests hard-fail without SYCLTLA ⚠️ Won't Fix (duplicate)
+**File**: `test/xpu/test_grouped_mm_xpu.py:55`
+> Tests will hard-fail when built without SYCLTLA. Add skip guard.
+
+**Status**: ⚠️ Won't Fix — duplicate of Comments 23/24. Hard failure is intentional.
+
+**Reply**:
+> Duplicate of Comment 24 — hard failure signals a broken build. @onlyXPU gates device availability. See Comment 23/24 for full reasoning.
+
+---
+
+### Comment 56 — ragged-B per-group allocation in GroupedMM ⚠️ Won't Fix (duplicate)
+**File**: `GroupedMM.cpp:372`
+> Per-group b_slice/d_slice temporaries and copies. Minimize overhead.
+
+**Status**: ⚠️ Won't Fix — duplicate of earlier performance suggestions.
+
+**Reply**:
+> Same as Comment 52 — valid future optimization, out of scope for initial port.
+
+---
+
+### Comment 57 — stride_b `{N, K, 1}` in ScaledGroupedMM ❌ Reject (duplicate)
+**File**: `ScaledGroupedMM.cpp:371`
+> Stride built with `{N, K, 1}` but B is (K, N). Inconsistent.
+
+**Status**: ❌ Reject — duplicate of Comments 28/44. False positive.
+
+**Reply**:
+> Duplicate of Comment 28/44. `{N, K, 1}` is correct for the CUTLASS/sycl-tla RowMajor B convention. See Comment 28 for full explanation with sycl-tla example reference.
+
+---
+
+### Comment 58 — stride_b `{N, K, 1}` in GroupedMM ❌ Reject (duplicate)
+**File**: `GroupedMM.cpp:308`
+> Same stride_b concern for GroupedMM.
+
+**Status**: ❌ Reject — duplicate of Comments 33/45. False positive.
+
+**Reply**:
+> Duplicate of Comment 33/45. Same reasoning — `{N, K, 1}` is correct for LayoutB = RowMajor.
+
+---
+
+## Round 7 Summary
+
+| Category | Count | Details |
+|----------|-------|---------|
+| ✅ Already Fixed | 1 | Input dtype/rank validation (#47) — dispatch layer handles it |
+| ⚠️ Won't Fix | 9 | PR description (#48), run_grouped_gemm dup (#49), offs monotonicity (#50, #54), compat::wait() (#51, #53), perf (#52, #56), test skip (#55) |
+| ❌ Reject (duplicate) | 2 | stride_b `{N,K,1}` (#57-58) — same false positive |
+| **Total** | **12** |
+
+---
+
+## Overall Cumulative Summary (Rounds 1-7)
+
+| Category | Count |
+|----------|-------|
+| ✅ Already Fixed | 21 |
+| ✅ Accept (applied) | 7 |
+| ❌ Reject (false positive) | 7 |
+| ⚠️ Won't Fix | 21 |
+| **Total** | **56** |
