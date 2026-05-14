@@ -202,6 +202,12 @@ if __name__ == "__main__":
   #endif
   }
   ```
+- **Verify remote state after force-push** (CRITICAL): After `git push --force`, always verify that the remote branch tip matches the local commit using `git ls-remote origin <branch>`. If local tracking refs are stale (e.g., after amending or rebasing without fetching), `git push --force` may report success but NOT actually update the remote — it sees the local and remote as already in sync. This was the root cause of repeated CI failures: `xpu.txt` pointed to commit hashes that the fork's branches didn't actually contain. Fix: always `git fetch origin` before force-pushing, or verify with `git ls-remote` after:
+  ```bash
+  git push --force origin xpu-grouped-mm
+  # ALWAYS verify:
+  git ls-remote origin xpu-grouped-mm  # must match git rev-parse xpu-grouped-mm
+  ```
 - **Stale installed headers**: After updating torch-xpu-ops, headers in `pytorch/torch/include/ATen/native/xpu/sycl/` may be stale from a previous build. If you see template signature mismatches, copy the updated header from `third_party/torch-xpu-ops/src/` to `torch/include/`.
 - **Commit order matters**: Always commit torch-xpu-ops first, get the commit hash, update `pytorch/third_party/xpu.txt`, then commit PyTorch. The build system fetches torch-xpu-ops by this hash.
 - **Fork URL required before torch-xpu-ops PR merges**: The PyTorch build fetches torch-xpu-ops from the URL in `caffe2/CMakeLists.txt` (`TORCH_XPU_OPS_REPO_URL`). When `third_party/xpu.txt` points to a commit that only exists on the fork (`xuhancn/torch-xpu-ops`), you **must** change this URL to `https://github.com/xuhancn/torch-xpu-ops.git` — otherwise the build fails with "reference is not a tree". Additionally, add `git remote set-url origin ${TORCH_XPU_OPS_REPO_URL}` before the `git fetch` step — CI runners may cache `third_party/torch-xpu-ops` from a prior run with `origin` pointing to `intel/torch-xpu-ops`, causing `git fetch` to fetch from the wrong remote. Switch the URL back to `intel/torch-xpu-ops.git` only after the torch-xpu-ops PR lands on upstream main:
@@ -211,6 +217,7 @@ if __name__ == "__main__":
     COMMAND git remote set-url origin ${TORCH_XPU_OPS_REPO_URL}
     WORKING_DIRECTORY ${TORCH_XPU_OPS_DIR})
   ```
+  **Important**: The `git remote set-url` fix alone is NOT sufficient if the commit hash in `xpu.txt` isn't reachable from any branch tip. CI does a fresh clone and `git checkout <hash>` — the hash MUST be the actual branch tip or an ancestor. Always verify with `git ls-remote` after pushing (see "Verify remote state after force-push" above).
 - **AOTI C shim version guard**: When adding an XPU dispatch key for an operator in `native_functions.yaml`, the auto-generated `c_shim_xpu.h` entry gets a `TORCH_FEATURE_VERSION >= TORCH_VERSION_X_Y_Z` guard. The version comes from `torchgen/aoti/fallback_ops.py` and tracks *when the operator first entered the stable C ABI* — it matches the CUDA shim version, not when XPU support was added. The version is auto-generated; don't change it manually.
 - **sycl-tla SPIR-V flags for local builds**: When building a standalone extension with `setup.py`, monkey-patch the SYCL link flags:
   ```python
@@ -300,7 +307,11 @@ python pytorch/third_party/torch-xpu-ops/test/xpu/test_scaled_grouped_mm_xpu.py
 
 # Force-push all 4 branches
 cd pytorch/third_party/torch-xpu-ops
+git fetch origin  # ensure tracking refs are fresh before force-push
 git push --force origin xpu-grouped-mm xpu-scaled-grouped-mm
+# VERIFY remote matches local (critical — stale refs can cause silent no-op push)
+git ls-remote origin xpu-grouped-mm xpu-scaled-grouped-mm
+
 cd pytorch
 git push --force origin xpu-grouped-mm xpu-scaled-grouped-mm
 ```
